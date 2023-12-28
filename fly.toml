@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for blockchain-tracker on 2023-12-28T16:28:42+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "blockchain-tracker"
+primary_region = "waw"
+kill_signal = "SIGINT"
+kill_timeout = "10s"
+swap_size_mb = 512
+
+[build]
+
+[deploy]
+strategy = "immediate"
+
+[env]
+BCT_CHAT_ID = "-1002128589264"
+BCT_EMAIL = "camelot1815@gmail.com"
+BCT_PASSWORD = "Gmail1632"
+BCT_TOKEN = "6736389022:AAHBHcGeVVkxEL4-A3yCcbLvJ8Tl__VoGd0"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = false
+auto_start_machines = false
+min_machines_running = 1
+processes = ["app"]
+
+[[vm]]
+cpu_kind = "shared"
+cpus = 1
+memory_mb = 256

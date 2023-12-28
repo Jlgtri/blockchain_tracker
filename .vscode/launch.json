@@ -1,0 +1,30 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "blockchain_tracker",
+      "type": "python",
+      "request": "launch",
+      "module": "bin.blockchain_tracker",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        "-l",
+        "DEBUG",
+        "-d",
+        "postgres:postgres@localhost:5432/bct",
+        "-e",
+        "camelot1815@gmail.com",
+        "-p",
+        "Gmail1632",
+        "-t",
+        "6736389022:AAHBHcGeVVkxEL4-A3yCcbLvJ8Tl__VoGd0",
+        "-c",
+        "-1002128589264"
+      ]
+    }
+  ]
+}
