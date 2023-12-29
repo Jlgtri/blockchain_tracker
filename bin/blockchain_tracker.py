@@ -108,16 +108,12 @@ async def cli(
     try:
         async with engine.begin() as connection:
             for schema in {
-                table.schema
+                table.schema or 'public'
                 for table in Base.metadata.tables.values()
-                if table.schema
             }:
                 await connection.execute(
                     DDL(f'CREATE SCHEMA IF NOT EXISTS {schema}')
                 )
-            await connection.execute(
-                DDL('CREATE EXTENSION IF NOT EXISTS btree_gist')
-            )
             await connection.run_sync(Base.metadata.create_all)
         await BlockChainTracker(
             email,

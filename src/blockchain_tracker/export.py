@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from contextlib import suppress
 from logging import getLogger
 from re import compile
 from typing import Optional
@@ -9,9 +9,8 @@ from aiogram.types.inline_keyboard_button import InlineKeyboardButton as IKB
 from aiogram.types.inline_keyboard_markup import InlineKeyboardMarkup as IKM
 from aiogram.types.message import Message
 from anyio import sleep as asleep
-from dateutil.tz.tz import tzlocal
 
-from .fetch import TransactionData
+from .models.public.transactions.transaction import Transaction
 
 #
 logger = getLogger('Export')
@@ -42,14 +41,14 @@ _markdownV2 = compile(
 )
 
 
-def _modify(text: str, /) -> str:
+def _escape(text: str, /) -> str:
     return _markdownV2.sub(lambda m: '\\' + m.group(0), text)
 
 
 async def export_transaction(
     bot: Bot,
     /,
-    transaction: TransactionData,
+    transaction: Transaction,
     chat_id: int,
     *,
     index: Optional[int] = None,
@@ -61,53 +60,57 @@ async def export_transaction(
         chat_id,
     )
 
+    def get_token_address_url(address: str, /) -> str:
+        with suppress(ValueError):
+            return Transaction.token_address_url(transaction.token_address)
+
     text = '\n'.join(
         _
         for _ in (
-            '{} от [{}]({}) • {}'.format(
+            '{} • {}'.format(
+                _escape(transaction.wallet.host.name),
+                _escape(transaction.token.chain),
+            ),
+            '{} от [{}]({}){}'.format(
                 'Отправлено'
                 if transaction.wallet_address == transaction.from_address
                 else 'Получено',
-                _modify(TransactionData.shorten(transaction.from_address)),
-                TransactionData.address_url(transaction.from_address),
-                _modify(transaction.chain),
+                _escape(Transaction.shorten(transaction.from_address)),
+                Transaction.address_url(transaction.from_address),
+                ' • {}'.format(_escape(transaction.wallet.name))
+                if transaction.wallet_address == transaction.from_address
+                else '',
             ),
             *(
-                '{} {} на [{}]({})'.format(
-                    _modify(transaction.format_amount(amount)),
-                    '[%s](%s)'
-                    % (
-                        _modify(transaction.symbol),
-                        TransactionData.token_address_url(
-                            transaction.token_address
-                        ),
+                '{} {} на [{}]({}){}'.format(
+                    _escape(transaction.token.format_amount(amount.amount)),
+                    '[{}]({})'.format(
+                        _escape(transaction.token.symbol),
+                        get_token_address_url(transaction.token_address) or '',
                     )
                     if transaction.token_address
-                    else _modify(transaction.symbol),
-                    _modify(TransactionData.shorten(address)),
-                    TransactionData.address_url(address),
+                    else _escape(transaction.token.symbol),
+                    _escape(Transaction.shorten(amount.to_address)),
+                    Transaction.address_url(amount.to_address),
+                    ' • {}'.format(_escape(transaction.wallet.name))
+                    if amount.to_address == transaction.wallet_address
+                    else '',
                 )
-                for address, amount in sorted(
+                for amount in sorted(
                     transaction.amounts,
-                    key=lambda x: int(x[0] == transaction.wallet_address),
+                    key=lambda amount: int(
+                        amount.to_address == transaction.wallet_address
+                    ),
                     reverse=True,
                 )
             ),
-        )
-        if _ is not None
-    )
-
-    text = '\n'.join(
-        (
-            text,
             '',
             'Дата транзакции: _%s_'
-            % _modify(
-                datetime.fromtimestamp(transaction.timestamp, timezone.utc)
-                .astimezone(tzlocal())
-                .strftime(r'%Y-%m-%d %H:%M:%S')
+            % _escape(
+                transaction.timestamp.strftime(r'%Y-%m-%d %H:%M:%S UTC')
             ),
         )
+        if _ is not None
     )
 
     while True:

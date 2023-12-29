@@ -1,6 +1,6 @@
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from re import match
 from typing import ClassVar, Final, Optional, Self
@@ -23,14 +23,13 @@ from sqlalchemy.sql.functions import max, now
 
 from .export import export_transaction
 from .fetch import (
-    TransactionData,
     fetch_bitcoin_wallet_transactions,
     fetch_tradersroom_token,
     fetch_tradersroom_wallets,
     fetch_tron_wallet_transactions,
 )
 from .models.public.transactions.transaction import Transaction
-from .models.public.wallets.wallet import Wallet
+from .models.public.wallets.wallet import Wallet, WalletHost
 from .models.tg.chats.chat_message import ChatMessage
 from .utils.get_bind import Bind, get_bind
 from .utils.wrap_exc import wrap_exc
@@ -96,9 +95,9 @@ class BlockChainTracker(object):
     async def run(self: Self, /) -> None:
         self._logger.info('Started!')
         event = Event()
-        sender, receiver = stream[TransactionData](float('inf'))
+        sender, receiver = stream[str](float('inf'))
         async with self._session, create_task_group() as tg, sender, receiver:
-            tg.start_soon(wrap_exc(self.fetch_wallets), event)
+            tg.start_soon(wrap_exc(self.fetch_wallets, self._Session), event)
             tg.start_soon(
                 wrap_exc(self.fetch_wallet_transactions),
                 event,
@@ -117,42 +116,55 @@ class BlockChainTracker(object):
         index: Optional[int] = None,
     ) -> None:
         while not index:
-            time_since = await self._Session.scalar(
-                select(now() - max(Wallet.updated_at))
-            )
-            if time_since is not None and time_since < self.WALLETS_PERIOD:
-                event.set()
-                await self._Session.remove()
-                await asleep(
-                    (self.WALLETS_PERIOD - time_since).total_seconds()
-                )
-            token = await fetch_tradersroom_token(
-                self._session,
-                self.email,
-                self.password,
-                index=index,
-            )
-            wallets = await fetch_tradersroom_wallets(
-                self._session,
-                token,
-                index=index,
-            )
-            for name, address in wallets.items():
-                await self._Session.merge(
-                    Wallet(
-                        name=name,
-                        address=address,
-                        updated_at=datetime.now(tzlocal()),
+            oldest_time_since = None
+            for host in WalletHost._value2member_map_.values():
+                time_since = await self._Session.scalar(
+                    select(now() - max(Wallet.updated_at)).filter_by(
+                        host=host.value
                     )
                 )
-            await self._Session.commit()
+                if time_since is not None and time_since < self.WALLETS_PERIOD:
+                    if oldest_time_since is None or (
+                        oldest_time_since < time_since
+                    ):
+                        oldest_time_since = time_since
+                    continue
+                user_id_token = await fetch_tradersroom_token(
+                    self._session,
+                    host,
+                    self.email,
+                    self.password,
+                    index=index,
+                )
+                if not user_id_token:
+                    continue
+
+                wallets = await fetch_tradersroom_wallets(
+                    self._session,
+                    host,
+                    *user_id_token,
+                    index=index,
+                )
+                for name, address in wallets.items():
+                    await self._Session.merge(
+                        Wallet(
+                            host=host.value,
+                            name=name,
+                            address=address,
+                            updated_at=datetime.now(tzlocal()),
+                        )
+                    )
+                await self._Session.commit()
             await self._Session.remove()
             event.set()
+            if oldest_time_since is not None:
+                time_to_sleep = self.WALLETS_PERIOD - oldest_time_since
+                await asleep(time_to_sleep.total_seconds())
 
     async def fetch_wallet_transactions(
         self: Self,
         event: Event,
-        sender: Sender[TransactionData],
+        sender: Sender[str],
         /,
         index: Optional[int] = None,
     ) -> None:
@@ -161,7 +173,7 @@ class BlockChainTracker(object):
             while not index:
                 async with self.TRANSACTIONS_LIMITER:
                     for wallet in await self._Session.scalars(select(Wallet)):
-                        if match(TransactionData.BTC_REGEXP, wallet.address):
+                        if match(Transaction.BTC_REGEXP, wallet.address):
                             transactions = (
                                 await fetch_bitcoin_wallet_transactions(
                                     self._session,
@@ -169,9 +181,7 @@ class BlockChainTracker(object):
                                     index=index,
                                 )
                             )
-                        elif match(
-                            TransactionData.TRON_REGEXP, wallet.address
-                        ):
+                        elif match(Transaction.TRON_REGEXP, wallet.address):
                             transactions = (
                                 await fetch_tron_wallet_transactions(
                                     self._session,
@@ -187,6 +197,7 @@ class BlockChainTracker(object):
                             )
                             continue
 
+                        transaction_hashes = []
                         last_transaction_at = await self._Session.scalar(
                             select(max(Transaction.timestamp)).filter_by(
                                 wallet_address=wallet.address
@@ -194,50 +205,63 @@ class BlockChainTracker(object):
                         )
                         for transaction in transactions:
                             with suppress(IntegrityError):
-                                async with self._Session.begin_nested():
-                                    self._Session.add(
-                                        Transaction(
-                                            hash=transaction.hash,
-                                            wallet_address=wallet.address,
-                                            timestamp=datetime.fromtimestamp(
-                                                transaction.timestamp,
-                                                timezone.utc,
-                                            ),
+                                async with self._Session.begin_nested() as tx:
+                                    transaction.token = (
+                                        await self._Session.merge(
+                                            transaction.token
                                         )
                                     )
+                                    self._Session.add(transaction)
+                                    for amount in transaction.amounts:
+                                        self._Session.add(amount)
                                 if last_transaction_at is not None:
-                                    await sender.send(transaction)
+                                    transaction_hashes.append(transaction.hash)
                         await self._Session.commit()
+                        for transaction_hash in transaction_hashes:
+                            await sender.send(transaction_hash)
                     await self._Session.remove()
 
     async def export_wallet_transactions(
         self: Self,
-        receiver: Receiver[TransactionData],
+        receiver: Receiver[str],
         /,
         index: Optional[int] = None,
     ) -> None:
         async with receiver:
-            async for transaction in receiver:
+            async for transaction_hash in receiver:
                 if await self._Session.scalar(
                     select(ChatMessage).filter_by(
-                        transaction_hash=transaction.hash
+                        transaction_hash=transaction_hash
                     )
                 ):
                     await self._Session.remove()
                     self._logger.info(
                         '%sSkipped exporting transaction `%s`!',
                         '[%s] ' % index if index is not None else '',
-                        transaction.hash,
+                        transaction_hash,
+                    )
+                    continue
+                transaction = await self._Session.get(
+                    Transaction, transaction_hash
+                )
+                if transaction is None:
+                    self._logger.info(
+                        '%sInvalid transaction `%s`!',
+                        '[%s] ' % index if index is not None else '',
+                        transaction_hash,
                     )
                     continue
                 async with self.EXPORT_LIMITER:
                     message = await export_transaction(
-                        self._bot, transaction, self.chat_id, index=index
+                        self._bot,
+                        transaction,
+                        self.chat_id,
+                        index=index,
                     )
                 with suppress(IntegrityError):
                     self._Session.add(
                         ChatMessage(
-                            transaction_hash=transaction.hash,
+                            transaction_hash=transaction_hash,
                             chat_id=self.chat_id,
                             message_id=message.message_id,
                         )

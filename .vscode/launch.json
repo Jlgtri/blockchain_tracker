@@ -13,7 +13,7 @@
       "justMyCode": true,
       "args": [
         "-l",
-        "DEBUG",
+        "INFO",
         "-d",
         "postgres:postgres@localhost:5432/bct",
         "-e",
@@ -23,7 +23,7 @@
         "-t",
         "6736389022:AAHBHcGeVVkxEL4-A3yCcbLvJ8Tl__VoGd0",
         "-c",
-        "-1002128589264"
+        "-1002060245772"
       ]
     }
   ]
