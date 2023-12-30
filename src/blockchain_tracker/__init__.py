@@ -157,9 +157,10 @@ class BlockChainTracker(object):
                 await self._Session.commit()
             await self._Session.remove()
             event.set()
+            time_to_sleep = self.WALLETS_PERIOD
             if oldest_time_since is not None:
-                time_to_sleep = self.WALLETS_PERIOD - oldest_time_since
-                await asleep(time_to_sleep.total_seconds())
+                time_to_sleep -= oldest_time_since
+            await asleep(time_to_sleep.total_seconds())
 
     async def fetch_wallet_transactions(
         self: Self,
@@ -205,7 +206,7 @@ class BlockChainTracker(object):
                         )
                         for transaction in transactions:
                             with suppress(IntegrityError):
-                                async with self._Session.begin_nested() as tx:
+                                async with self._Session.begin_nested():
                                     transaction.token = (
                                         await self._Session.merge(
                                             transaction.token
