@@ -207,15 +207,20 @@ class BlockChainTracker(object):
                         for transaction in transactions:
                             with suppress(IntegrityError):
                                 async with self._Session.begin_nested():
-                                    transaction.token = (
-                                        await self._Session.merge(
-                                            transaction.token
-                                        )
+                                    t = await self._Session.merge(
+                                        transaction.token
                                     )
+                                    transaction.token = t
                                     self._Session.add(transaction)
                                     for amount in transaction.amounts:
                                         self._Session.add(amount)
-                                if last_transaction_at is not None:
+                                if transaction.timestamp < datetime(
+                                    2024, 1, 2, 8, 35
+                                ):
+                                    continue
+                                if last_transaction_at is not None and (
+                                    transaction.timestamp > last_transaction_at
+                                ):
                                     transaction_hashes.append(transaction.hash)
                         await self._Session.commit()
                         for transaction_hash in transaction_hashes:
