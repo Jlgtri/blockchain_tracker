@@ -190,7 +190,7 @@ async def fetch_bitcoin_wallet_transactions(
                 for out in tx['out']
             ],
         )
-        for tx in data['txs']
+        for tx in reversed(data['txs'])
     ]
     logger.info(
         '%sFetched `%s` transactions for BTC wallet `%s`!',
@@ -250,7 +250,7 @@ async def fetch_tron_wallet_transactions(
                 )
             ],
         )
-        for tx in data['data']
+        for tx in reversed(data['data'])
     ]
     logger.info(
         '%sFetched `%s` transactions for TRON wallet `%s`!',
