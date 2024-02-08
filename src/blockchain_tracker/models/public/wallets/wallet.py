@@ -19,18 +19,17 @@ class WalletHostAction(StrEnum):
 
 
 class WalletHost(StrEnum):
-    # benefort: Final[str] = 'benefort.org'
+    benefort: Final[str] = 'benefort.org'
     fianit: Final[str] = 'fianit.net'
     whitetrade: Final[str] = 'whitetrade.net'
 
     def key(self: Self, action: WalletHostAction, /) -> str:
-        # if self == self.benefort:
-        #     if action == WalletHostAction.login:
-        #         return ''
-        #     elif action == WalletHostAction.fetch_wallets:
-        #         return ''
-        # el
-        if self == self.fianit:
+        if self == self.benefort:
+            if action == WalletHostAction.login:
+                return '83111e2846f21ca2ac9d3c8fdaa2233f'
+            elif action == WalletHostAction.fetch_wallets:
+                return '585d7706e92aa21213036d8a182a8dfd'
+        elif self == self.fianit:
             if action == WalletHostAction.login:
                 return '9913cab1ae0ebab298863cda7086f7c9'
             elif action == WalletHostAction.fetch_wallets:
@@ -45,13 +44,12 @@ class WalletHost(StrEnum):
         raise RuntimeError('`%s` is not a known action!' % action)
 
     def rand_param(self: Self, action: WalletHostAction, /) -> str:
-        # if self == self.benefort:
-        #     if action == WalletHostAction.login:
-        #         return ''
-        #     elif action == WalletHostAction.fetch_wallets:
-        #         return ''
-        # el
-        if self == self.fianit:
+        if self == self.benefort:
+            if action == WalletHostAction.login:
+                return '46171996'
+            elif action == WalletHostAction.fetch_wallets:
+                return '27251694'
+        elif self == self.fianit:
             if action == WalletHostAction.login:
                 return '77097949'
             elif action == WalletHostAction.fetch_wallets:

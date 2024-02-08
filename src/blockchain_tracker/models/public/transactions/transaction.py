@@ -21,7 +21,8 @@ class Transaction(Timestamped, Base):
     BTC_REGEXP: ClassVar[Pattern] = compile(
         r'^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}$'
     )
-    TRON_REGEXP: ClassVar[Pattern] = compile(r'T[A-Za-z1-9]{33}')
+    TRON_REGEXP: ClassVar[Pattern] = compile(r'^T[A-Za-z1-9]{33}$')
+    ETHEREUM_REGEXP: ClassVar[Pattern] = compile(r'^0x[a-fA-F0-9]{40}$')
 
     hash: Mapped[str] = Column(
         String(255),

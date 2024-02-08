@@ -24,6 +24,7 @@ from sqlalchemy.sql.functions import max, now
 from .export import export_transaction
 from .fetch import (
     fetch_bitcoin_wallet_transactions,
+    fetch_ethereum_wallet_transactions,
     fetch_tradersroom_token,
     fetch_tradersroom_wallets,
     fetch_tron_wallet_transactions,
@@ -47,6 +48,7 @@ class BlockChainTracker(object):
     _session: Final[ClientSession]
     _logger: Final[Logger]
 
+    FETCH_LIMITER: ClassVar[AsyncLimiter] = AsyncLimiter(1, 1)
     EXPORT_LIMITER: ClassVar[AsyncLimiter] = AsyncLimiter(1, 1)
     TRANSACTIONS_PERIOD: ClassVar[timedelta] = timedelta(minutes=1)
     TRANSACTIONS_LIMITER: ClassVar[AsyncLimiter] = AsyncLimiter(
@@ -174,30 +176,47 @@ class BlockChainTracker(object):
             while not index:
                 async with self.TRANSACTIONS_LIMITER:
                     for wallet in await self._Session.scalars(select(Wallet)):
-                        if match(Transaction.BTC_REGEXP, wallet.address):
-                            transactions = (
-                                await fetch_bitcoin_wallet_transactions(
+                        async with self.FETCH_LIMITER:
+                            if match(Transaction.BTC_REGEXP, wallet.address):
+                                transactions = (
+                                    await fetch_bitcoin_wallet_transactions(
+                                        self._session,
+                                        wallet.address,
+                                        index=index,
+                                    )
+                                )
+                            elif match(
+                                Transaction.TRON_REGEXP, wallet.address
+                            ):
+                                transactions = (
+                                    await fetch_tron_wallet_transactions(
+                                        self._session,
+                                        wallet.address,
+                                        index=index,
+                                    )
+                                )
+                            elif match(
+                                Transaction.ETHEREUM_REGEXP, wallet.address
+                            ):
+                                transactions = await fetch_ethereum_wallet_transactions(
                                     self._session,
                                     wallet.address,
+                                    apikey='ZX3THT4Y2734SZ56G7FQP7FM2RREJ6ETET',
                                     index=index,
                                 )
-                            )
-                        elif match(Transaction.TRON_REGEXP, wallet.address):
-                            transactions = (
-                                await fetch_tron_wallet_transactions(
-                                    self._session,
+                            else:
+                                self._logger.warning(
+                                    '%sUnknown wallet address `%s`!',
+                                    (
+                                        '[%s] ' % index
+                                        if index is not None
+                                        else ''
+                                    ),
                                     wallet.address,
-                                    index=index,
                                 )
-                            )
-                        else:
-                            self._logger.warning(
-                                '%sUnknown wallet address `%s`!',
-                                '[%s] ' % index if index is not None else '',
-                                wallet.address,
-                            )
+                                continue
+                        if not transactions:
                             continue
-
                         transaction_hashes = []
                         last_transaction_at = await self._Session.scalar(
                             select(max(Transaction.timestamp)).filter_by(

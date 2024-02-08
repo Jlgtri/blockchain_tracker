@@ -6,7 +6,7 @@
   "configurations": [
     {
       "name": "blockchain_tracker",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "module": "bin.blockchain_tracker",
       "console": "integratedTerminal",

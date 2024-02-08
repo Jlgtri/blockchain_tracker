@@ -8,3 +8,4 @@ asyncpg==0.29.0
 inflect==7.0.0
 python-dateutil==2.8.2
 SQLAlchemy==2.0.23
+web3==6.15.1

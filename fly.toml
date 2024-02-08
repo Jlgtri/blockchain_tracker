@@ -4,7 +4,7 @@
 #
 
 app = "blockchain-tracker"
-primary_region = "waw"
+primary_region = "lhr"
 kill_signal = "SIGINT"
 kill_timeout = "10s"
 swap_size_mb = 512
