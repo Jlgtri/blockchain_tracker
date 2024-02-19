@@ -236,29 +236,42 @@ async def fetch_tron_wallet_transactions(
                 await response.text(),
             )
         data = await response.json()
-    transactions = [
-        Transaction(
-            hash=tx['transaction_id'],
-            wallet_address=wallet_address,
-            from_address=tx['from'],
-            timestamp=datetime.fromtimestamp(tx['block_timestamp'] / 1e3),
-            token=Token(
-                address=tx['token_info']['address'],
-                symbol=tx['token_info']['symbol'],
-                name=tx['token_info']['name'],
-                chain='Tron',
-                decimals=tx['token_info']['decimals'],
-            ),
-            amounts=[
-                TransactionAmount(
-                    transaction_hash=tx['transaction_id'],
-                    to_address=tx['to'],
-                    amount=int(tx['value']),
-                )
-            ],
-        )
-        for tx in reversed(data['data'])
-    ]
+    try:
+        transactions = [
+            Transaction(
+                hash=tx['transaction_id'],
+                wallet_address=wallet_address,
+                from_address=tx['from'],
+                timestamp=datetime.fromtimestamp(tx['block_timestamp'] / 1e3),
+                token=(
+                    Token(
+                        address=tx['token_info']['address'],
+                        symbol=tx['token_info']['symbol'],
+                        name=tx['token_info']['name'],
+                        chain='Tron',
+                        decimals=tx['token_info']['decimals'],
+                    )
+                    if tx['token_info']
+                    else Token(
+                        address='trx',
+                        symbol='TRX',
+                        name='TRX (TRON)',
+                        chain='Tron',
+                        decimals=6,
+                    )
+                ),
+                amounts=[
+                    TransactionAmount(
+                        transaction_hash=tx['transaction_id'],
+                        to_address=tx['to'],
+                        amount=int(tx['value']),
+                    )
+                ],
+            )
+            for tx in reversed(data['data'])
+        ]
+    except BaseException as _:
+        print()
     logger.info(
         '%sFetched `%s` transactions for TRON wallet `%s`!',
         '[%s] ' % index if index is not None else '',
